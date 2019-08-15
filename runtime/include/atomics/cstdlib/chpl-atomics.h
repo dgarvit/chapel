@@ -258,4 +258,85 @@ DECLARE_REAL_ATOMICS(_real64);
 #undef DECLARE_ATOMICS
 #undef DECLARE_REAL_ATOMICS
 
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+struct uint128 {
+  uint64_t lo;
+  uint64_t hi;
+};
+
+typedef struct uint128 uint128_t;
+static inline int cas128bit(void *srcvp, void *cmpvp, void *withvp) {
+  uint128_t __attribute__ ((aligned (16))) cmp_val = * (uint128_t *) cmpvp;
+  uint128_t __attribute__ ((aligned (16))) with_val = * (uint128_t *) withvp;      
+  uint128_t *src = srcvp;
+  uint128_t *cmp = &cmp_val;
+  uint128_t *with = &with_val;
+  char result;
+
+  __asm__ __volatile__ ("lock; cmpxchg16b (%6);"
+      "setz %7; "
+      : "=a" (cmp->lo),
+      "=d" (cmp->hi)
+      : "0" (cmp->lo),
+      "1" (cmp->hi),
+      "b" (with->lo),
+      "c" (with->hi),
+      "r" (src),
+      "m" (result)
+      : "cc", "memory");
+  *(uint128_t *) cmpvp = cmp_val;
+  return result;
+}
+
+static inline void write128bit(void *srcvp, void *valvp) {
+  uint128_t __attribute__ ((aligned (16))) with_val = * (uint128_t *) valvp;
+  uint128_t __attribute__ ((aligned (16))) cmp_val = * (uint128_t *) srcvp;
+  uint128_t *src = srcvp;
+  uint128_t *cmp = &cmp_val;
+  uint128_t *with = &with_val;
+  char successful = 0;
+
+  while (!successful) {
+    __asm__ __volatile__ ("lock; cmpxchg16b (%6);"
+        "setz %7; "
+        : "=a" (cmp->lo),
+        "=d" (cmp->hi)
+        : "0" (cmp->lo),
+        "1" (cmp->hi),
+        "b" (with->lo),
+        "c" (with->hi),
+        "r" (src),
+        "m" (successful)
+        : "cc", "memory");
+  }
+}
+
+inline void read128bit(void *srcvp, void *dstvp) {
+  uint128_t __attribute__ ((aligned (16))) src_val = * (uint128_t *) srcvp;
+  uint128_t __attribute__ ((aligned (16))) cmp_val = src_val;
+  uint128_t __attribute__ ((aligned (16))) with_val = src_val;
+  uint128_t *src = srcvp;
+  uint128_t *cmp = &cmp_val;
+  uint128_t *with = &with_val;
+  char result;
+
+  __asm__ __volatile__ ("lock; cmpxchg16b (%6);"
+      "setz %7; "
+      : "=a" (cmp->lo),
+      "=d" (cmp->hi)
+      : "0" (cmp->lo),
+      "1" (cmp->hi),
+      "b" (with->lo),
+      "c" (with->hi),
+      "r" (src),
+      "m" (result)
+      : "cc", "memory");
+
+  *(uint128_t *)dstvp = cmp_val;
+}
+
+
 #endif // _chpl_atomics_h_
