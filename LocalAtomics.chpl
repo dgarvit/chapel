@@ -16,7 +16,10 @@ module LocalAtomics {
   extern type c_nodeid_t;
   extern proc chpl_return_wide_ptr_node(c_nodeid_t, c_void_ptr) : wide_ptr_t;
   extern proc posix_memalign(ptr:c_void_ptr, sz:int, alignment:uint) : int;
-  extern proc read128(src:c_void_ptr, dest:c_void_ptr):void;
+  extern "read128bit" proc read128bit(src:c_void_ptr, dest:c_void_ptr):void;
+  extern "cas128bit" proc cas128bit(src:c_void_ptr, expected:c_void_ptr, desired:c_void_ptr):bool;
+  extern "write128bit" proc write128bit(src:c_void_ptr, val:c_void_ptr):void;
+
 
   /*
      The core `GlobalAtomicObject` which manages compression and decompression

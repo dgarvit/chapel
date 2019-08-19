@@ -258,10 +258,6 @@ DECLARE_REAL_ATOMICS(_real64);
 #undef DECLARE_ATOMICS
 #undef DECLARE_REAL_ATOMICS
 
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-
 struct uint128 {
   uint64_t lo;
   uint64_t hi;
@@ -314,7 +310,7 @@ static inline void write128bit(void *srcvp, void *valvp) {
   }
 }
 
-inline void read128bit(void *srcvp, void *dstvp) {
+static inline void read128bit(void *srcvp, void *dstvp) {
   uint128_t __attribute__ ((aligned (16))) src_val = * (uint128_t *) srcvp;
   uint128_t __attribute__ ((aligned (16))) cmp_val = src_val;
   uint128_t __attribute__ ((aligned (16))) with_val = src_val;
