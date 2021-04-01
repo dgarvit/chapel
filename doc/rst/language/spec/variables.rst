@@ -22,7 +22,7 @@ Variables are declared with the following syntax:
    variable-declaration-statement:
      privacy-specifier[OPT] config-extern-or-export[OPT] variable-kind variable-declaration-list ;
 
-   config-or-extern: one of
+   config-extern-or-export: one of
      'config' 'extern' 'export'
 
    variable-kind:
@@ -128,15 +128,15 @@ expression for a variable to be in a statement after the variable
 declaration statement.
 
 If the ``initialization-part`` of a local variable declaration is
-omitted, the compiler will search forward in the function for the
-earliest assignment statement(s) setting that variable that occur before
+omitted, the compiler will search forward in that scope for the
+earliest assignment statement(s) setting that variable that occurs before
 the variable is otherwise mentioned. It will consider the variable passed
 to an ``out`` intent argument as an assignment statement for this
-purpose.  It will search only within block declarations ``{ }``, ``try``
-blocks, ``try!`` blocks, and conditionals.  These assignment statements
-and calls to functions with ``out`` intent are called applicable
-assignment statements.  They perform initialization, not assignment, of
-that variable.
+purpose.  It will search only within block statements ``{ }``,
+``local`` blocks, ``serial`` blocks, ``try`` blocks, ``try!`` blocks, and
+conditionals.  These assignment statements and calls to functions with
+``out`` intent are called applicable assignment statements.  They perform
+initialization, not assignment, of that variable.
 
    *Example (simple-split-init.chpl)*
 
@@ -173,8 +173,9 @@ that variable.
    .. BLOCK-test-chapeloutput
 
       no-split-init.chpl:1: In function 'main':
-      no-split-init.chpl:2: error: variable 'x' is not initialized and has no type
-      no-split-init.chpl:3: note: 'x' use here prevents split-init from establishing the type
+      no-split-init.chpl:2: error: 'x' is not initialized and has no type
+      no-split-init.chpl:2: note: cannot find initialization point to split-init this variable
+      no-split-init.chpl:3: note: 'x' is used here before it is initialized
 
 
    *Example (split-cond-blocks-init.chpl)*
@@ -905,8 +906,8 @@ is not mentioned again, the copy will be elided.  Since a ``return`` or
 ``throw`` exits a function, a copy can be elided if it is followed
 immediately by a ``return`` or ``throw``. When searching forward from
 variable declarations, copy elision considers eliding copies only within
-block declarations ``{ }``, ``try`` blocks, ``try!`` blocks, and
-conditionals.
+block statements ``{ }``, ``local`` blocks, ``serial`` blocks, ``try``
+blocks, ``try!`` blocks, and conditionals.
 
    *Example (copy-elision.chpl)*
 

@@ -212,9 +212,9 @@ full and store the value from that expression.
              return value;
 
           var x$: sync int;
-          begin x$ = left!.sum();
+          begin x$.writeEF(left!.sum());
           var y = right!.sum();
-          return x$ + y;
+          return x$.readFE() + y;
         }
       }
 
@@ -249,43 +249,6 @@ full and store the value from that expression.
 
 ..
 
-   *Example (syncCounter.chpl)*.
-
-   Sync variables are useful for tallying data from multiple tasks as
-   well. If all updates to an initialized sync variable are via compound
-   assignment operators (or equivalently, traditional assignments that
-   read and write the variable once), the full/empty state of the sync
-   variable guarantees that the reads and writes will be interleaved in
-   a manner that makes the updates atomic. For example, the code:
-   
-
-   .. code-block:: chapel
-
-      var count$: sync int = 0;
-      cobegin {
-        count$ += 1;
-        count$ += 1;
-        count$ += 1;
-      }
-
-   
-
-   .. BLOCK-test-chapelpost
-
-      writeln("count is: ", count$.readFF());
-
-   
-
-   .. BLOCK-test-chapeloutput
-
-      count is: 3
-
-   creates three tasks that increment ``count$``. If
-   ``count$`` were not a sync variable, this code
-   would be unsafe because two tasks could then read the same value
-   before either had written its updated value, causing one of the
-   increments to be lost.
-
    *Example (singleVar.chpl)*.
 
    The following code implements a simple split-phase barrier using a
@@ -307,14 +270,14 @@ full and store the value from that expression.
 
       forall t in 1..n do begin {
         work(t);
-        var myc = count$;  // read the count, set state to empty
+        var myc = count$.readFE();  // read the count, set state to empty
         if myc!=1 {
           write(".");
-          count$ = myc-1;  // update the count, set state to full
+          count$.writeEF(myc-1);   // update the count, set state to full
           // we could also do some work here before blocking
-          release$;
+          release$.readFF();
         } else {
-          release$ = true;  // last one here, release everyone
+          release$.writeEF(true);  // last one here, release everyone
           writeln("done");
         }
       }
@@ -357,9 +320,9 @@ The following methods are defined for variables of sync and single type.
 
 
 
-::
+   .. code-block:: chapel
 
-   proc (sync t).readFE(): t
+      proc (sync t).readFE(): t
 
 Returns the value of the sync variable. This method blocks until the
 sync variable is full. The state of the sync variable is set to empty
@@ -368,10 +331,10 @@ when this method completes. This method implements the normal read of a
 
 
 
-::
+   .. code-block:: chapel
 
-   proc (sync t).readFF(): t
-   proc (single t).readFF(): t
+      proc (sync t).readFF(): t
+      proc (single t).readFF(): t
 
 Returns the value of the sync or single variable. This method blocks
 until the sync or single variable is full. The state of the sync or
@@ -380,10 +343,10 @@ implements the normal read of a ``single`` variable.
 
 
 
-::
+   .. code-block:: chapel
 
-   proc (sync t).readXX(): t
-   proc (single t).readXX(): t
+      proc (sync t).readXX(): t
+      proc (single t).readXX(): t
 
 Returns the value of the sync or single variable. This method is
 non-blocking and the state of the sync or single variable is unchanged
@@ -391,10 +354,10 @@ when this method completes.
 
 
 
-::
+   .. code-block:: chapel
 
-   proc (sync t).writeEF(v: t)
-   proc (single t).writeEF(v: t)
+      proc (sync t).writeEF(v: t)
+      proc (single t).writeEF(v: t)
 
 Assigns ``v`` to the value of the sync or single variable. This method
 blocks until the sync or single variable is empty. The state of the sync
@@ -403,9 +366,9 @@ method implements the normal write of a ``sync`` or ``single`` variable.
 
 
 
-::
+   .. code-block:: chapel
 
-   proc (sync t).writeFF(v: t)
+      proc (sync t).writeFF(v: t)
 
 Assigns ``v`` to the value of the sync variable. This method blocks
 until the sync variable is full. The state of the sync variable remains
@@ -413,9 +376,9 @@ full when this method completes.
 
 
 
-::
+   .. code-block:: chapel
 
-   proc (sync t).writeXF(v: t)
+      proc (sync t).writeXF(v: t)
 
 Assigns ``v`` to the value of the sync variable. This method is
 non-blocking and the state of the sync variable is set to full when this
@@ -423,9 +386,9 @@ method completes.
 
 
 
-::
+   .. code-block:: chapel
 
-   proc (sync t).reset()
+      proc (sync t).reset()
 
 Assigns the default value of type ``t`` to the value of the sync
 variable. This method is non-blocking and the state of the sync variable
@@ -433,77 +396,14 @@ is set to empty when this method completes.
 
 
 
-::
+   .. code-block:: chapel
 
-   proc (sync t).isFull: bool
-   proc (single t).isFull: bool
+      proc (sync t).isFull: bool
+      proc (single t).isFull: bool
 
 Returns ``true`` if the sync or single variable is full and ``false``
 otherwise. This method is non-blocking and the state of the sync or
 single variable is unchanged when this method completes.
-
-Note that ``writeEF`` and ``readFE``/``readFF`` methods (for ``sync``
-and ``single`` variables, respectively) are implicitly invoked for
-normal writes and reads of synchronization variables.
-
-   *Example (syncMethods.chpl)*.
-
-   Given the following declarations 
-
-   .. BLOCK-test-chapelpre
-
-      { // }
-
-   
-
-   .. code-block:: chapel
-
-      var x$: sync int;
-      var y$: single int;
-      var z: int;
-
-   the code 
-
-   .. code-block:: chapel
-
-      x$ = 5;
-      y$ = 6;
-      z = x$ + y$;
-
-   
-
-   .. BLOCK-test-chapelnoprint
-
-      writeln((x$.readXX(), y$.readFF(), z));
-      // {
-      }
-      { // }
-      var x$: sync int;
-      var y$: single int;
-      var z: int;
-
-   is equivalent to 
-
-   .. code-block:: chapel
-
-      x$.writeEF(5);
-      y$.writeEF(6);
-      z = x$.readFE() + y$.readFF();
-
-   
-
-   .. BLOCK-test-chapelpost
-
-      writeln((x$.readXX(), y$.readFF(), z));
-      // {
-      }
-
-   
-
-   .. BLOCK-test-chapeloutput
-
-      (5, 6, 11)
-      (5, 6, 11)
 
 .. _Atomic_Variables:
 
@@ -572,35 +472,35 @@ memoryOrder.seqCst.
 
 
 
-::
+   .. code-block:: chapel
 
-   proc (atomic T).read(param order:memoryOrder = memoryOrder.seqCst): T
+      proc (atomic T).read(param order:memoryOrder = memoryOrder.seqCst): T
 
 Reads and returns the stored value. Defined for all atomic types.
 
 
 
-::
+   .. code-block:: chapel
 
-   proc (atomic T).write(v: T, param order:memoryOrder = memoryOrder.seqCst)
+      proc (atomic T).write(v: T, param order:memoryOrder = memoryOrder.seqCst)
 
 Stores ``v`` as the new value. Defined for all atomic types.
 
 
 
-::
+   .. code-block:: chapel
 
-   proc (atomic T).exchange(v: T, param order:memoryOrder = memoryOrder.seqCst): T
+      proc (atomic T).exchange(v: T, param order:memoryOrder = memoryOrder.seqCst): T
 
 Stores ``v`` as the new value and returns the original value. Defined
 for all atomic types.
 
-::
+   .. code-block:: chapel
 
-   proc (atomic T).compareExchange(ref e: T, v: T, param order:memoryOrder = memoryOrder.seqCst): bool
-   proc (atomic T).compareExchange(ref e: T, v: T, param failure:memoryOrder, param success:memoryOrder): bool
-   proc (atomic T).compareExchangeWeak(ref e: T, v: T, param order:memoryOrder = memoryOrder.seqCst): bool
-   proc (atomic T).compareExchangeWeak(ref e: T, v: T, param failure:memoryOrder, param success:memoryOrder): bool
+      proc (atomic T).compareExchange(ref e: T, v: T, param order:memoryOrder = memoryOrder.seqCst): bool
+      proc (atomic T).compareExchange(ref e: T, v: T, param failure:memoryOrder, param success:memoryOrder): bool
+      proc (atomic T).compareExchangeWeak(ref e: T, v: T, param order:memoryOrder = memoryOrder.seqCst): bool
+      proc (atomic T).compareExchangeWeak(ref e: T, v: T, param failure:memoryOrder, param success:memoryOrder): bool
 
 Stores ``v`` as the new value, if and only if the original value is
 equal to ``e``. Returns ``true`` if ``v`` was stored, otherwise
@@ -611,9 +511,9 @@ performance on some platforms. Defined for all atomic types.
 
 
 
-::
+   .. code-block:: chapel
 
-   proc (atomic T).compareAndSwap(e: T, v: T, param order:memoryOrder = memoryOrder.seqCst): bool
+      proc (atomic T).compareAndSwap(e: T, v: T, param order:memoryOrder = memoryOrder.seqCst): bool
 
 Stores ``v`` as the new value, if and only if the original value is
 equal to ``e``. Returns ``true`` if ``v`` was stored, ``false``
@@ -621,13 +521,13 @@ otherwise. Defined for all atomic types.
 
 
 
-::
+   .. code-block:: chapel
 
-   proc (atomic T).add(v: T, param order:memoryOrder = memoryOrder.seqCst)
-   proc (atomic T).sub(v: T, param order:memoryOrder = memoryOrder.seqCst)
-   proc (atomic T).or(v: T, param order:memoryOrder = memoryOrder.seqCst)
-   proc (atomic T).and(v: T, param order:memoryOrder = memoryOrder.seqCst)
-   proc (atomic T).xor(v: T, param order:memoryOrder = memoryOrder.seqCst)
+      proc (atomic T).add(v: T, param order:memoryOrder = memoryOrder.seqCst)
+      proc (atomic T).sub(v: T, param order:memoryOrder = memoryOrder.seqCst)
+      proc (atomic T).or(v: T, param order:memoryOrder = memoryOrder.seqCst)
+      proc (atomic T).and(v: T, param order:memoryOrder = memoryOrder.seqCst)
+      proc (atomic T).xor(v: T, param order:memoryOrder = memoryOrder.seqCst)
 
 Applies the appropriate operator (``+``, ``-``, ``|``, ``&``, ``^``) to
 the original value and ``v`` and stores the result. All of the methods
@@ -644,13 +544,13 @@ for the ``bool`` atomic type.
 
 
 
-::
+   .. code-block:: chapel
 
-   proc (atomic T).fetchAdd(v: T, param order:memoryOrder = memoryOrder.seqCst): T
-   proc (atomic T).fetchSub(v: T, param order:memoryOrder = memoryOrder.seqCst): T
-   proc (atomic T).fetchOr(v: T, param order:memoryOrder = memoryOrder.seqCst): T
-   proc (atomic T).fetchAnd(v: T, param order:memoryOrder = memoryOrder.seqCst): T
-   proc (atomic T).fetchXor(v: T, param order:memoryOrder = memoryOrder.seqCst): T
+      proc (atomic T).fetchAdd(v: T, param order:memoryOrder = memoryOrder.seqCst): T
+      proc (atomic T).fetchSub(v: T, param order:memoryOrder = memoryOrder.seqCst): T
+      proc (atomic T).fetchOr(v: T, param order:memoryOrder = memoryOrder.seqCst): T
+      proc (atomic T).fetchAnd(v: T, param order:memoryOrder = memoryOrder.seqCst): T
+      proc (atomic T).fetchXor(v: T, param order:memoryOrder = memoryOrder.seqCst): T
 
 Applies the appropriate operator (``+``, ``-``, ``|``, ``&``, ``^``) to
 the original value and ``v``, stores the result, and returns the original
@@ -660,27 +560,27 @@ methods are defined for the ``bool`` atomic type.
 
 
 
-::
+   .. code-block:: chapel
 
-   proc (atomic bool).testAndSet(param order:memoryOrder = memoryOrder.seqCst): bool
+      proc (atomic bool).testAndSet(param order:memoryOrder = memoryOrder.seqCst): bool
 
 Stores ``true`` as the new value and returns the old value. Equivalent
 to ``exchange(true)``. Only defined for the ``bool`` atomic type.
 
 
 
-::
+   .. code-block:: chapel
 
-   proc (atomic bool).clear(param order:memoryOrder = memoryOrder.seqCst)
+      proc (atomic bool).clear(param order:memoryOrder = memoryOrder.seqCst)
 
 Stores ``false`` as the new value. Equivalent to ``write(false)``. Only
 defined for the ``bool`` atomic type.
 
 
 
-::
+   .. code-block:: chapel
 
-   proc (atomic T).waitFor(v: T)
+      proc (atomic T).waitFor(v: T)
 
 Waits until the stored value is equal to ``v``. The implementation may
 yield the running task while waiting. Defined for all atomic types.
@@ -716,9 +616,9 @@ statements may not be used to exit a cobegin block.
    .. BLOCK-test-chapelpre
 
       var s1, s2: sync int;
-      proc stmt1() { s1; }
-      proc stmt2() { s2; s1 = 1; }
-      proc stmt3() { s2 = 1; }
+      proc stmt1() { s1.readFE(); }
+      proc stmt2() { s2.readFE(); s1.writeEF(1); }
+      proc stmt3() { s2.writeEF(1); }
 
    
 
@@ -737,10 +637,10 @@ statements may not be used to exit a cobegin block.
    .. code-block:: chapel
 
       var s1$, s2$, s3$: single bool;
-      begin { stmt1(); s1$ = true; }
-      begin { stmt2(); s2$ = true; }
-      begin { stmt3(); s3$ = true; }
-      s1$; s2$; s3$;
+      begin { stmt1(); s1$.writeEF(true); }
+      begin { stmt2(); s2$.writeEF(true); }
+      begin { stmt3(); s3$.writeEF(true); }
+      s1$.readFF(); s2$.readFF(); s3$.readFF();
 
    Each begin statement is executed concurrently but control does not
    continue past the final line above until each of the single variables
@@ -803,18 +703,18 @@ statements may not be used to exit a coforall block.
       var runningCount$: sync int = 1;
       var finished$: single bool;
       for i in iterator() {
-        runningCount$ += 1;
+        runningCount$.writeEF(runningCount$.readFE() + 1);
         begin {
           body();
-          var tmp = runningCount$;
-          runningCount$ = tmp-1;
-          if tmp == 1 then finished$ = true;
+          var tmp = runningCount$.readFE();
+          runningCount$.writeEF(tmp-1);
+          if tmp == 1 then finished$.writeEF(true);
         }
       }
-      var tmp = runningCount$;
-      runningCount$ = tmp-1;
-      if tmp == 1 then finished$ = true;
-      finished$;
+      var tmp = runningCount$.readFE();
+      runningCount$.writeEF(tmp-1);
+      if tmp == 1 then finished$.writeEF(true);
+      finished$.readFF();
 
    Each call to ``body()`` executes concurrently because it is in a
    begin statement. The sync variable

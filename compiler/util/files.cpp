@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Hewlett Packard Enterprise Development LP
+ * Copyright 2020-2021 Hewlett Packard Enterprise Development LP
  * Copyright 2004-2019 Cray Inc.
  * Other additional copyright holders may be indicated within.
  *
@@ -431,15 +431,15 @@ void addSourceFiles(int numNewFilenames, const char* filename[]) {
     if (!isRecognizedSource(filename[i])) {
       USR_FATAL("file '%s' does not have a recognized suffix", filename[i]);
     }
-    // WE SHOULDN"T TRY TO OPEN .h files, just .c and .chpl and .o
+    // WE SHOULDN'T TRY TO OPEN .h files, just .c and .chpl and .o
     if (!isCHeader(filename[i])) {
       FILE* testfile = openInputFile(filename[i]);
-      if (fscanf(testfile, "%c", &achar) != 1) {
-        USR_FATAL("source file '%s' is either empty or a directory",
-                  filename[i]);
+      if (testfile) {
+        if (fscanf(testfile, "%c", &achar) != 1)
+          USR_FATAL("source file '%s' is either empty or a directory",
+                    filename[i]);
+        closeInputFile(testfile);
       }
-
-      closeInputFile(testfile);
     }
 
     //
@@ -563,11 +563,11 @@ std::string runPrintChplEnv(std::map<std::string, const char*> varMap) {
   return runCommand(command);
 }
 
-std::string getVenvDir() {
-  // Runs `util/chplenv/chpl_home_utils.py --venv` and removes the newline
+std::string getChplDepsApp() {
+  // Runs `util/chplenv/chpl_home_utils.py --chpldeps` and removes the newline
 
-  std::string command = "CHPL_HOME=" + std::string(CHPL_HOME) + " python ";
-  command += std::string(CHPL_HOME) + "/util/chplenv/chpl_home_utils.py --venv 2> /dev/null";
+  std::string command = "CHPL_HOME=" + std::string(CHPL_HOME) + " python3 ";
+  command += std::string(CHPL_HOME) + "/util/chplenv/chpl_home_utils.py --chpldeps 2> /dev/null";
 
   std::string venvDir = runCommand(command);
   venvDir.erase(venvDir.find_last_not_of("\n\r")+1);
@@ -799,7 +799,7 @@ void codegen_makefile(fileinfo* mainfile, const char** tmpbinname,
     const char* loc = "$(CHPL_MAKE_HOME)/runtime/etc/src";
     fprintf(makefile.fptr, "COMP_GEN_MLI_EXTRA_INCLUDES = -I%s\n", loc);
   }
-  
+
   // Build a string out of include directories, for convenience.
   std::string includedirs;
   for_vector(const char, dirName, incDirs) {
@@ -881,10 +881,10 @@ void codegen_makefile(fileinfo* mainfile, const char** tmpbinname,
     fprintf(makefile.fptr, "\t%s \\\n", splitFiles[i]);
   }
   fprintf(makefile.fptr, "\n");
-  
+
   genCFiles(makefile.fptr);
   genObjFiles(makefile.fptr);
-  
+
   // List libraries/locations needed to compile this deliverable.
   fprintf(makefile.fptr, "\nLIBS =");
   for_vector(const char, dirName, libDirs) {
@@ -1115,12 +1115,14 @@ static int sys_getcwd(char** path_out)
  * sys_getcwd() if you need error reports.
  */
 const char* getCwd() {
-  const char* result = getcwd(NULL, PATH_MAX);
-  if (result) {
-    return result;
-  } else {
+  char* ret = nullptr;;
+  int rc;
+
+  rc = sys_getcwd(&ret);
+  if (rc == 0)
+    return ret;
+  else
     return "";
-  }
 }
 
 

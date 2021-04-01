@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Hewlett Packard Enterprise Development LP
+ * Copyright 2020-2021 Hewlett Packard Enterprise Development LP
  * Copyright 2004-2019 Cray Inc.
  * Other additional copyright holders may be indicated within.
  *
@@ -156,6 +156,8 @@ module ChapelRange {
   use ChapelBase, SysBasic, HaltWrappers;
 
   use Math, DSIUtil;
+
+  private use ChapelDebugPrint only chpl_debug_writeln;
 
   // Turns on range iterator debugging.
   pragma "no doc"
@@ -342,6 +344,19 @@ module ChapelRange {
     compilerError("Bounds of 'low..high' must be integers of compatible types.");
   }
 
+  proc chpl__nudgeLowBound(low) {
+    return chpl__intToIdx(low.type, chpl__idxToInt(low) + 1);
+  }
+  proc chpl__nudgeLowBound(param low) param {
+    return chpl__intToIdx(low.type, chpl__idxToInt(low) + 1);
+  }
+  proc chpl__nudgeHighBound(high) {
+    return chpl__intToIdx(high.type, chpl__idxToInt(high) - 1);
+  }
+  proc chpl__nudgeHighBound(param high) param {
+    return chpl__intToIdx(high.type, chpl__idxToInt(high) - 1);
+  }
+
   // Range builders for low bounded ranges
   proc chpl_build_low_bounded_range(low: integral)
     return new range(low.type, BoundedRangeType.boundedLow, _low=low);
@@ -391,6 +406,16 @@ module ChapelRange {
 
   proc chpl_compute_high_param_loop_bound(param low: uint(?w),
                                           param high: uint(w)) param {
+    return high;
+  }
+
+  proc chpl_compute_low_param_loop_bound(param low: enum,
+                                         param high: low.type) param {
+    return low;
+  }
+
+  proc chpl_compute_high_param_loop_bound(param low: enum,
+                                          param high: low.type) param {
     return high;
   }
 
@@ -499,6 +524,7 @@ module ChapelRange {
   //################################################################################
   //# Predicates
   //#
+
   /* Return true if argument ``t`` is a range type, false otherwise */
   proc isRangeType(type t) param {
     proc isRangeHelp(type t: range(?)) param  return true;
@@ -771,20 +797,6 @@ module ChapelRange {
     return other == this(other);
   }
 
-  /* Deprecated - please use :proc:`range.contains`. */
-  inline proc range.member(ind: idxType) {
-    compilerWarning("range.member is deprecated - " +
-                    "please use range.contains instead");
-    return this.contains(ind);
-  }
-
-  /* Deprecated - please use :proc:`range.contains`. */
-  inline proc range.member(other: range(?)) {
-    compilerWarning("range.member is deprecated - " +
-                    "please use range.contains instead");
-    return this.contains(other);
-  }
-
   // Negate one of the two args' strides before comparison.
   private inline proc _containsHelp(in arg1: range(?), in arg2: range(?)) {
     if arg2.stridable then
@@ -898,7 +910,7 @@ proc range.safeCast(type t: range(?)) {
    new type is not stridable, then force the new stride to be 1.
  */
 pragma "no doc"
-proc _cast(type t: range(?), r: range(?)) {
+operator :(r: range(?), type t: range(?)) {
   var tmp: t;
 
   if tmp.boundedType != r.boundedType {
@@ -907,9 +919,9 @@ proc _cast(type t: range(?), r: range(?)) {
   }
 
   if tmp.stridable {
-    tmp._stride = r._stride;
-    tmp._alignment = r._alignment: tmp.intIdxType;
-    tmp._aligned = r._aligned;
+    tmp._stride = r.stride;
+    tmp._alignment = r.alignment: tmp.intIdxType;
+    tmp._aligned = r.aligned;
   }
 
   tmp._low = r.low: tmp.intIdxType;
@@ -2394,7 +2406,7 @@ proc _cast(type t: range(?), r: range(?)) {
   //# Utilities
   //#
 
-  proc _cast(type t: string, x: range(?)) {
+  operator :(x: range(?), type t: string) {
     var ret: string;
 
     if x.hasLowBound() then
@@ -2437,18 +2449,10 @@ proc _cast(type t: range(?), r: range(?)) {
   //################################################################################
   //# Internal helper functions.
   //#
-  pragma "no doc"
-  inline proc range.chpl__unTranslate(i: intIdxType)
-    return this - i;
 
   pragma "no doc"
   inline proc range.chpl__unTranslate(i)
-  {
-    if isIntType(i.type) then
-      return this - i;
-    else
-      return this + abs(i);
-  }
+    return this - i;
 
   // Determine if a strided range has a definite alignment.
   proc chpl__hasAlignment(r : range(?))
@@ -2633,7 +2637,7 @@ proc _cast(type t: range(?), r: range(?)) {
       return i: idxType;
   }
 
-  inline proc chpl__intToIdx(type idxType: integral, param i: integral) {
+  inline proc chpl__intToIdx(type idxType: integral, param i: integral) param {
     if (i.type == idxType) then
       return i;
     else
@@ -2641,6 +2645,10 @@ proc _cast(type t: range(?), r: range(?)) {
   }
 
   inline proc chpl__intToIdx(type idxType: enum, i: integral) {
+    return chpl__orderToEnum(i, idxType);
+  }
+
+  inline proc chpl__intToIdx(type idxType: enum, param i: integral) param {
     return chpl__orderToEnum(i, idxType);
   }
 
@@ -2665,6 +2673,10 @@ proc _cast(type t: range(?), r: range(?)) {
   }
 
   inline proc chpl__idxToInt(i: enum) {
+    return chpl__enumToOrder(i);
+  }
+
+  inline proc chpl__idxToInt(param i: enum) param {
     return chpl__enumToOrder(i);
   }
 

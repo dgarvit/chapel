@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Hewlett Packard Enterprise Development LP
+ * Copyright 2020-2021 Hewlett Packard Enterprise Development LP
  * Copyright 2004-2019 Cray Inc.
  * Other additional copyright holders may be indicated within.
  *
@@ -141,7 +141,7 @@ module Version {
 
   // cast from sourceVersion to string
   pragma "no doc"
-  proc _cast(type t: string, x: sourceVersion(?)) param {
+  operator :(x: sourceVersion(?), type t: string) param {
     if (x.commit == "") then
       return ("version " + x.major:string + "." + x.minor:string + "." +
               x.update:string);

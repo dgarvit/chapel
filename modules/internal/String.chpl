@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Hewlett Packard Enterprise Development LP
+ * Copyright 2020-2021 Hewlett Packard Enterprise Development LP
  * Copyright 2004-2019 Cray Inc.
  * Other additional copyright holders may be indicated within.
  *
@@ -47,7 +47,7 @@ Besides the functions below, some other modules provide routines that are
 useful for working with strings. The :mod:`IO` module provides
 `IO.string.format` which creates a string that is the result of
 formatting. It also includes functions for reading and writing strings.
-The :mod:`Regexp` module also provides some routines for searching
+The :mod:`Regex` module also provides some routines for searching
 within strings.
 
 Casts from String to a Numeric Type
@@ -703,6 +703,11 @@ module String {
     }
   }
 
+  proc cStrAssignmentDeprWarn() {
+    compilerWarning("Assigning to a string from a c_string is deprecated. ",
+                    "Use createStringWith*Buffer functions instead.");
+  }
+
   //
   // String Implementation
   //
@@ -734,6 +739,10 @@ module String {
 
     proc init=(cs: c_string) {
       this.complete();
+      cStrAssignmentDeprWarn();
+      try! {
+        this.cachedNumCodepoints = validateEncoding(cs:bufferType, cs.size);
+      }
       initWithNewBuffer(this, cs:bufferType, length=cs.size, size=cs.size+1);
     }
 
@@ -2099,6 +2108,7 @@ module String {
      Halts if `lhs` is a remote string.
   */
   proc =(ref lhs: string, rhs_c: c_string) {
+    cStrAssignmentDeprWarn();
     // I want to use try! but got tripped over by #14465
     try {
       lhs = createStringWithNewBuffer(rhs_c);
@@ -2354,13 +2364,13 @@ module String {
   //
 
   pragma "no doc"
-  inline proc _cast(type t: bufferType, cs: c_string) {
+  inline operator :(cs: c_string, type t: bufferType)  {
     return __primitive("cast", t, cs);
   }
 
   // Cast from c_string to string
   pragma "no doc"
-  proc _cast(type t: string, cs: c_string) {
+  operator :(cs: c_string, type t: string)  {
     try {
       return createStringWithNewBuffer(cs);
     }
@@ -2371,13 +2381,13 @@ module String {
 
   // Cast from byteIndex to int
   pragma "no doc"
-  inline proc _cast(type t: int, cpi: byteIndex) {
+  inline operator :(cpi: byteIndex, type t: int)  {
     return cpi._bindex;
   }
 
   // Cast from int to byteIndex
   pragma "no doc"
-  inline proc _cast(type t: byteIndex, i: int) {
+  inline operator :(i: int, type t: byteIndex)  {
     var cpi: byteIndex;
     cpi._bindex = i;
     return cpi;
@@ -2385,13 +2395,13 @@ module String {
 
   // Cast from codepointIndex to int
   pragma "no doc"
-  inline proc _cast(type t: int, cpi: codepointIndex) {
+  inline operator :(cpi: codepointIndex, type t: int)  {
     return cpi._cpindex;
   }
 
   // Cast from int to codepointIndex
   pragma "no doc"
-  inline proc _cast(type t: codepointIndex, i: int) {
+  inline operator :(i: int, type t: codepointIndex) {
     var cpi: codepointIndex;
     cpi._cpindex = i;
     return cpi;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Hewlett Packard Enterprise Development LP
+ * Copyright 2020-2021 Hewlett Packard Enterprise Development LP
  * Copyright 2004-2019 Cray Inc.
  * Other additional copyright holders may be indicated within.
  *
@@ -195,7 +195,9 @@ module ChapelTuple {
   //
   pragma "compiler generated"
   pragma "last resort"
-  inline proc =(ref x: _tuple, y: _tuple) where x.size == y.size {
+  inline proc =(ref x: _tuple,
+                pragma "intent ref maybe const formal" y: _tuple)
+  where x.size == y.size {
     for param i in 0..x.size-1 do
       x(i) = y(i);
   }
@@ -215,6 +217,19 @@ module ChapelTuple {
         halt("tuple access out of bounds: ", i);
     return __primitive("get svec member", this, i);
   }
+
+  pragma "no doc"
+  pragma "reference to const when const this"
+  pragma "star tuple accessor"
+  proc _tuple.this(i : bool) ref {
+    if !isHomogeneousTuple(this) then
+      compilerError("invalid access of non-homogeneous tuple by runtime value");
+    if boundsChecking then
+      if i < 0 || i > size-1 then
+        halt("tuple access out of bounds: ", i);
+    return __primitive("get svec member", this, i);
+  }
+
 
   // This is controlled with --[no-]warn-tuple-iteration
   // so we are not chpldoc-ing it.
@@ -311,13 +326,13 @@ module ChapelTuple {
   // Note: statically inlining the _chpl_complex runtime functions is necessary
   // for good performance
   //
-  inline proc _cast(type t: complex(64), x: (?,?)) {
+  inline operator :(x: (?,?), type t: complex(64)) {
     pragma "fn synchronization free"
     extern proc _chpl_complex64(re:real(32),im:real(32)) : complex(64);
     return _chpl_complex64(x(0):real(32),x(1):real(32));
   }
 
-  inline proc _cast(type t: complex(128), x: (?,?)) {
+  inline operator :(x: (?,?), type t: complex(128)) {
     pragma "fn synchronization free"
     extern proc _chpl_complex128(re:real(64),im:real(64)):complex(128);
     return _chpl_complex128(x(0):real(64),x(1):real(64));
@@ -328,7 +343,7 @@ module ChapelTuple {
   //
   pragma "tuple cast fn"
   pragma "unsafe"
-  inline proc _cast(type t:_tuple, x: _tuple) {
+  inline operator :(x: _tuple, type t:_tuple) {
     // body filled in during resolution
   }
 

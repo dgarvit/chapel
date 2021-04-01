@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Hewlett Packard Enterprise Development LP
+ * Copyright 2020-2021 Hewlett Packard Enterprise Development LP
  * Copyright 2004-2019 Cray Inc.
  * Other additional copyright holders may be indicated within.
  *
@@ -149,7 +149,10 @@ module ChapelDistribution {
   //
   pragma "base domain"
   class BaseDom {
-    var _arrs: chpl__simpleSet(unmanaged BaseArr); // arrays declared over this domain
+    // Head pointer to doubly-linked-list of arrays declared over this domain.
+    // Only used when trackArrays() is true. Instead of having an external list
+    // data structure, we just store the prev/next pointers directly in BaseArr
+    var _arrs_head: unmanaged BaseArr?;
     var _arrs_containing_dom: int; // number of arrays using this domain
                                    // as var A: [D] [1..2] real
                                    // is using {1..2}
@@ -163,6 +166,15 @@ module ChapelDistribution {
     }
 
     proc deinit() {
+    }
+
+    pragma "order independent yielding loops"
+    iter _arrs: unmanaged BaseArr {
+      var tmp = _arrs_head;
+      while tmp != nil {
+        yield tmp!;
+        tmp = tmp!.next;
+      }
     }
 
     proc dsiMyDist(): unmanaged BaseDist {
@@ -181,8 +193,10 @@ module ChapelDistribution {
     pragma "dont disable remote value forwarding"
     proc remove() : (unmanaged BaseDom?, unmanaged BaseDist?) {
 
-      // TODO -- remove dsiLinksDistribution
-      assert( dsiMyDist().dsiTrackDomains() == dsiLinksDistribution() );
+      if boundsChecking {
+        // TODO -- remove dsiLinksDistribution
+        assert( dsiMyDist().dsiTrackDomains() == dsiLinksDistribution() );
+      }
 
       var ret_dom:unmanaged BaseDom? = nil;
       var ret_dist:unmanaged BaseDist? = nil;
@@ -225,17 +239,18 @@ module ChapelDistribution {
       var count = -1;
       on this {
         var cnt = -1;
-        local {
-          _arrsLock.lock();
-          _arrs_containing_dom -=1;
-          if rmFromList && trackArrays() then
-            _arrs.remove(x);
-          cnt = _arrs_containing_dom;
-          // add one for the main domain record
-          if !_free_when_no_arrs then
-            cnt += 1;
-          _arrsLock.unlock();
+        _arrsLock.lock();
+        _arrs_containing_dom -=1;
+        if rmFromList && trackArrays() {
+          if _arrs_head == x then _arrs_head = x.next;
+          if const xnext = x.next then xnext.prev = x.prev;
+          if const xprev = x.prev then xprev.next = x.next;
         }
+        cnt = _arrs_containing_dom;
+        // add one for the main domain record
+        if !_free_when_no_arrs then
+          cnt += 1;
+        _arrsLock.unlock();
         count = cnt;
       }
       return (count==0);
@@ -251,8 +266,14 @@ module ChapelDistribution {
         if locking then
           _arrsLock.lock();
         _arrs_containing_dom += 1;
-        if addToList && trackArrays() then
-          _arrs.add(x);
+        if addToList && trackArrays() {
+          assert (x.prev == nil && x.next == nil);
+          if const ahead = _arrs_head {
+            x.next = ahead;
+            ahead.prev = x;
+          }
+          _arrs_head = x;
+        }
         if locking then
           _arrsLock.unlock();
       }
@@ -301,6 +322,10 @@ module ChapelDistribution {
     proc dsiDisplayRepresentation() { writeln("<no way to display representation>"); }
 
     proc dsiSupportsAutoLocalAccess() param {
+      return false;
+    }
+
+    proc dsiIteratorYieldsLocalElements() param {
       return false;
     }
 
@@ -396,7 +421,7 @@ module ChapelDistribution {
       const oldNNZDomSize = nnzDom.size;
       if (size > oldNNZDomSize) {
         const _newNNZDomSize = if (oldNNZDomSize) then ceil(factor*oldNNZDomSize):int else 1;
-        nnzDom = {1..#_newNNZDomSize};
+        nnzDom = {0..#_newNNZDomSize};
       }
     }
 
@@ -411,7 +436,7 @@ module ChapelDistribution {
         const shrinkThreshold = (nnzDom.size / (factor**2)): int;
         if (size < shrinkThreshold) {
           const _newNNZDomSize = (nnzDom.size / factor): int;
-          nnzDom = {1.._newNNZDomSize};
+          nnzDom = {0..#_newNNZDomSize};
         }
       }
     }
@@ -425,7 +450,7 @@ module ChapelDistribution {
       if (nnz > nnzDom.size) {
         const _newNNZDomSize = (exp2(log2(nnz)+1.0)):int;
 
-        nnzDom = {1.._newNNZDomSize};
+        nnzDom = {0..#_newNNZDomSize};
       }
     }
 
@@ -472,7 +497,8 @@ module ChapelDistribution {
       }
     }
 
-    // this is a helper function for bulkAdd functions in sparse subdomains.
+    // this is a helper function for bulkAdd functions in sparse subdomains, which
+    // store the nonzeros in order based on their major and minor index
     // NOTE:it assumes that nnz array of the sparse domain has non-negative
     // indices. If, for some reason it changes, this function and bulkAdds have to
     // be refactored. (I think it is a safe assumption at this point and keeps the
@@ -658,6 +684,9 @@ module ChapelDistribution {
   //
   pragma "base array"
   class BaseArr {
+    var prev: unmanaged BaseArr?;
+    var next: unmanaged BaseArr?;
+
     var pid:int = nullPid; // privatized ID, if privatization is supported
     var _decEltRefCounts : bool = false;
 
@@ -799,6 +828,10 @@ module ChapelDistribution {
 
     proc decEltCountsIfNeeded() {
       // degenerate so it can be overridden
+    }
+
+    proc dsiIteratorYieldsLocalElements() param {
+      return false;
     }
   }
 
@@ -943,12 +976,12 @@ module ChapelDistribution {
     // at the end of bulkAdd, it is almost certain that oldnnz!=data.size
     override proc sparseBulkShiftArray(shiftMap, oldnnz){
       var newIdx: int;
-      var prevNewIdx = 1;
+      var prevNewIdx = 0;
 
       // fill all new indices i s.t. i > indices[oldnnz]
       forall i in shiftMap.domain.high+1..dom.nnzDom.high do data[i] = irv;
 
-      for (i, _newIdx) in zip(1..oldnnz by -1, shiftMap.domain.dim(0) by -1) {
+      for (i, _newIdx) in zip(0..#oldnnz by -1, shiftMap.domain.dim(0) by -1) {
         newIdx = shiftMap[_newIdx];
         data[newIdx] = data[i];
 
@@ -957,7 +990,7 @@ module ChapelDistribution {
         prevNewIdx = newIdx;
       }
       //fill the initial added space with IRV
-      for i in 1..prevNewIdx-1 do data[i] = irv;
+      for i in 0..prevNewIdx-1 do data[i] = irv;
     }
 
     // shift data array after single index addition. Fills the new index with irv
